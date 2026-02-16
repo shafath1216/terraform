@@ -1,0 +1,96 @@
+version: "3.9"
+
+services:
+  # ------------------------------
+  # Postgres DB
+  # ------------------------------
+  db:
+    image: postgres:16
+    container_name: db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./ghost_blog_backup.sql:/docker-entrypoint-initdb.d/ghost_blog_backup.sql:ro
+    ports:
+      - "${DB_PORT}:${DB_PORT}"
+    networks:
+      - backend_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${DB_USER}"]
+      interval: 5s
+      retries: 5
+
+  # ------------------------------
+  # Express backend
+  # ------------------------------
+  backend:
+    image: shafath061/shafath_backend:latest
+    container_name: backend
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend_network
+    ports:
+      - "3000:3000"
+
+  # ------------------------------
+  # Django admin panel
+  # ------------------------------
+  django:
+    image: shafath061/shafath_django:latest
+    container_name: django
+    env_file:
+      - .env
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend_network
+    volumes:
+      - static-data:/app/static
+    ports:
+      - "8000:8000"
+
+  # ------------------------------
+  # React frontend (with Nginx)
+  # ------------------------------
+  frontend:
+    image: shafath061/shafath_frontend:latest
+    container_name: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - django
+    networks:
+      - frontend_network
+      - backend_network
+    ports:
+      - "80:80"
+    volumes:
+      - static-data:/static
+
+# ------------------------------
+# Volumes
+# ------------------------------
+volumes:
+  db-data:
+  static-data:
+
+# ------------------------------
+# Networks
+# ------------------------------
+networks:
+  backend_network:
+    driver: bridge
+  frontend_network:
+    driver: bridge
+
